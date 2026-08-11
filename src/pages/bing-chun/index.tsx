@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { MenuCategoryId } from "./data";
+import type { MenuCategoryId, MenuProduct } from "./data";
 import type { BingChunLocation } from "./locations";
 
 import {
@@ -96,9 +96,11 @@ function Reveal({ children, className = "", delay = 0 }: { children: ReactNode; 
 function BingChunPage() {
     const [activeCategory, setActiveCategory] = useState<MenuCategoryId>("fruit-tea");
     const [menuOpen, setMenuOpen] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState<{ product: MenuProduct; categoryLabel: string } | null>(null);
     const [headerCompact, setHeaderCompact] = useState(false);
     const [locationFilter, setLocationFilter] = useState("All");
     const [selectedLocationId, setSelectedLocationId] = useState(locations[0].id);
+    const productDialogCloseRef = useRef<HTMLButtonElement>(null);
     const currentCategory = menuCategories.find(category => category.id === activeCategory) ?? menuCategories[0];
     const filteredLocations = locationFilter === "All" ? locations : locations.filter(location => location.area === locationFilter);
     const selectedLocation = locations.find(location => location.id === selectedLocationId) ?? locations[0];
@@ -106,8 +108,10 @@ function BingChunPage() {
     useEffect(() => {
         const onScroll = () => setHeaderCompact(window.scrollY > 24);
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape")
+            if (event.key === "Escape") {
                 setMenuOpen(false);
+                setSelectedProduct(null);
+            }
         };
 
         onScroll();
@@ -122,12 +126,20 @@ function BingChunPage() {
 
     useEffect(() => {
         const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = menuOpen ? "hidden" : previousOverflow;
+        document.body.style.overflow = menuOpen || selectedProduct ? "hidden" : previousOverflow;
 
         return () => {
             document.body.style.overflow = previousOverflow;
         };
-    }, [menuOpen]);
+    }, [menuOpen, selectedProduct]);
+
+    useEffect(() => {
+        if (!selectedProduct)
+            return;
+
+        const focusTimer = window.setTimeout(() => productDialogCloseRef.current?.focus(), 40);
+        return () => window.clearTimeout(focusTimer);
+    }, [selectedProduct]);
 
     useEffect(() => {
         const previousTitle = document.title;
@@ -243,7 +255,7 @@ function BingChunPage() {
         <div className="bc-page">
             <a className="bc-skip-link" href="#main-content">Skip to content</a>
 
-            <header className={`bc-header ${headerCompact ? "is-compact" : ""}`}>
+            <header className={`bc-header ${headerCompact ? "is-compact" : ""} ${menuOpen ? "is-menu-open" : ""}`}>
                 <div className="bc-shell bc-header__inner">
                     <a className="bc-brand" href="#top" aria-label="Bing Chun Nigeria home">
                         <img src={assets.brandLogo} alt="Bing Chun" width="467" height="600" />
@@ -272,16 +284,31 @@ function BingChunPage() {
                 </div>
 
                 <div id="bc-mobile-navigation" className={`bc-mobile-nav ${menuOpen ? "is-open" : ""}`} aria-hidden={!menuOpen}>
+                    <div className="bc-mobile-nav__intro">
+                        <span>Bing Chun · Nigeria</span>
+                        <small>Ice cream & tea across Lagos</small>
+                    </div>
                     <nav aria-label="Mobile navigation">
-                        {navigation.map(item => (
-                            <a key={item.href} href={item.href} onClick={() => setMenuOpen(false)}>{item.label}</a>
+                        {navigation.map((item, index) => (
+                            <a
+                                key={item.href}
+                                href={item.href}
+                                onClick={() => setMenuOpen(false)}
+                                style={{ "--bc-menu-index": index } as CSSProperties}
+                            >
+                                <span>{item.label}</span>
+                                <ArrowRight size={18} aria-hidden="true" />
+                            </a>
                         ))}
-                        <a href={commerce.orderUrl} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>
-                            Order on Chowdeck
-                            {" "}
-                            <ArrowUpRight size={18} />
-                        </a>
                     </nav>
+                    <a className="bc-mobile-nav__order" href={commerce.orderUrl} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>
+                        <span>
+                            <ShoppingBag size={18} aria-hidden="true" />
+                            Order on Chowdeck
+                        </span>
+                        <ArrowUpRight size={19} aria-hidden="true" />
+                    </a>
+                    <p className="bc-mobile-nav__footnote">Seven verified locations across Lagos</p>
                 </div>
             </header>
 
@@ -417,33 +444,48 @@ function BingChunPage() {
                                 <span>{String(menuCategories.indexOf(currentCategory) + 1).padStart(2, "0")}</span>
                                 <p>{currentCategory.kicker}</p>
                             </div>
-                            <div className="bc-product-grid">
-                                {currentCategory.products.map(product => (
-                                    <article className="bc-product-card" key={product.name}>
-                                        <div className="bc-product-card__image">
-                                            <img
-                                                className={`is-${product.imageFit ?? "contain"}`}
-                                                src={product.image}
-                                                alt={product.imageAlt}
-                                                width={product.imageWidth ?? 700}
-                                                height={product.imageHeight ?? 700}
-                                                sizes="(max-width: 620px) 112px, (max-width: 1080px) 132px, 132px"
-                                                loading="lazy"
-                                            />
-                                            {product.status === "sold-out-online" && <span>Sold out online</span>}
-                                        </div>
-                                        <div className="bc-product-card__body">
-                                            <div>
-                                                <h3>{product.name}</h3>
-                                                <p>{product.description}</p>
+                            <div className={`bc-product-grid bc-product-grid--count-${currentCategory.products.length}`}>
+                                {currentCategory.products.map((product, index) => (
+                                    <article
+                                        className={`bc-product-card ${index === 0 ? "bc-product-card--feature" : ""}`.trim()}
+                                        key={product.name}
+                                        style={{ "--bc-product-index": index } as CSSProperties}
+                                    >
+                                        <button
+                                            className="bc-product-card__trigger"
+                                            type="button"
+                                            aria-label={`View ${product.name} details`}
+                                            aria-haspopup="dialog"
+                                            onClick={() => setSelectedProduct({ product, categoryLabel: currentCategory.label })}
+                                        >
+                                            <div className="bc-product-card__image">
+                                                <span className="bc-product-card__number">{String(index + 1).padStart(2, "0")}</span>
+                                                <span className="bc-product-card__spark" aria-hidden="true">✦</span>
+                                                <img
+                                                    className={`is-${product.imageFit ?? "contain"}`}
+                                                    src={product.image}
+                                                    alt={product.imageAlt}
+                                                    width={product.imageWidth ?? 700}
+                                                    height={product.imageHeight ?? 700}
+                                                    sizes={index === 0 ? "(max-width: 620px) 90vw, 500px" : "(max-width: 620px) 44vw, 300px"}
+                                                    loading="lazy"
+                                                />
+                                                {product.status === "sold-out-online" && <span className="bc-product-card__status">Sold out online</span>}
                                             </div>
-                                            <div className="bc-product-card__footer">
-                                                <strong>{formatNaira.format(product.price)}</strong>
-                                                <a href={commerce.orderUrl} target="_blank" rel="noreferrer" aria-label={`Check ${product.name} on Chowdeck`}>
-                                                    <ArrowUpRight size={18} />
-                                                </a>
+                                            <div className="bc-product-card__body">
+                                                <span className="bc-product-card__category">{currentCategory.label}</span>
+                                                <div>
+                                                    <h3>{product.name}</h3>
+                                                    <p>{product.description}</p>
+                                                </div>
+                                                <div className="bc-product-card__footer">
+                                                    <strong>{formatNaira.format(product.price)}</strong>
+                                                    <span className="bc-product-card__open" aria-hidden="true">
+                                                        <ArrowUpRight size={18} />
+                                                    </span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        </button>
                                     </article>
                                 ))}
                             </div>
@@ -726,6 +768,65 @@ function BingChunPage() {
                     </div>
                 </section>
             </main>
+
+            {selectedProduct && (
+                <div
+                    className="bc-product-dialog"
+                    role="presentation"
+                    onMouseDown={(event) => {
+                        if (event.currentTarget === event.target)
+                            setSelectedProduct(null);
+                    }}
+                >
+                    <section
+                        className="bc-product-dialog__panel"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="bc-product-dialog-title"
+                    >
+                        <button
+                            ref={productDialogCloseRef}
+                            className="bc-product-dialog__close"
+                            type="button"
+                            aria-label="Close product details"
+                            onClick={() => setSelectedProduct(null)}
+                        >
+                            <X size={22} />
+                        </button>
+                        <div className="bc-product-dialog__media">
+                            <span aria-hidden="true">ICE & TEA · LAGOS</span>
+                            <img
+                                className={`is-${selectedProduct.product.imageFit ?? "contain"}`}
+                                src={selectedProduct.product.image}
+                                alt={selectedProduct.product.imageAlt}
+                                width={selectedProduct.product.imageWidth ?? 700}
+                                height={selectedProduct.product.imageHeight ?? 700}
+                            />
+                            <i aria-hidden="true">✦</i>
+                        </div>
+                        <div className="bc-product-dialog__content">
+                            <p className="bc-product-dialog__category">{selectedProduct.categoryLabel}</p>
+                            <h2 id="bc-product-dialog-title">{selectedProduct.product.name}</h2>
+                            <p className="bc-product-dialog__description">{selectedProduct.product.description}</p>
+                            <div className="bc-product-dialog__meta">
+                                <span>
+                                    Menu price
+                                    <strong>{formatNaira.format(selectedProduct.product.price)}</strong>
+                                </span>
+                                <span>
+                                    Online status
+                                    <strong>{selectedProduct.product.status === "sold-out-online" ? "Sold out online" : "Check live menu"}</strong>
+                                </span>
+                            </div>
+                            <a className="bc-button bc-button--ink bc-product-dialog__cta" href={commerce.orderUrl} target="_blank" rel="noreferrer">
+                                {selectedProduct.product.status === "sold-out-online" ? "Check live menu" : "Order on Chowdeck"}
+                                <ArrowUpRight size={18} />
+                            </a>
+                            <small>Price and availability are based on the current Jara Mall listing and may change.</small>
+                        </div>
+                    </section>
+                </div>
+            )}
 
             <footer className="bc-footer">
                 <div className="bc-shell bc-footer__top">
