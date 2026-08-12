@@ -66,8 +66,8 @@ export const assets = {
 };
 
 export const commerce = {
-    orderUrl: "https://chowdeck.com/store/ikeja/restaurants/bingchun-ikeja1wle1l",
-    whatsappUrl: null,
+    apiBaseUrl: import.meta.env.VITE_ZIDI_COMMERCE_API_BASE_URL || "https://api.zidihq.com/api/v1",
+    merchantSlug: import.meta.env.VITE_ZIDI_COMMERCE_MERCHANT_SLUG || "bing-chun-nigeria",
     rewardsUrl: null,
 } as const;
 

@@ -9,6 +9,8 @@ npm install
 npm run dev
 ```
 
+Copy the public values from `.env.example` when overriding the ZidiCommerce API or merchant slug locally. The site resolves its WhatsApp order link from the backend at runtime, so the destination remains tied to the correct ZidiCommerce merchant. Ordering controls wait for that verified channel and never fall back to a third-party marketplace.
+
 ## Production
 
 ```bash

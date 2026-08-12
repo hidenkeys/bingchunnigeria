@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 
 import {
     ArrowRight,
@@ -8,8 +8,8 @@ import {
     ExternalLink,
     MapPin,
     Menu,
+    MessageCircle,
     Phone,
-    ShoppingBag,
     Snowflake,
     Sparkles,
     X,
@@ -21,11 +21,11 @@ import type { BingChunLocation } from "./locations";
 
 import {
     assets,
-    commerce,
     menuCategories,
     navigation,
     promotions,
 } from "./data";
+import { createCommerceWhatsAppUrl, resolveCommerceWhatsAppLink } from "./commerce-link";
 import { locationAreas, locations } from "./locations";
 import "./bing-chun.css";
 
@@ -34,6 +34,17 @@ const formatNaira = new Intl.NumberFormat("en-NG", {
     currency: "NGN",
     maximumFractionDigits: 0,
 });
+
+const defaultOrderMessage = "Hi Zidi, I would like to place an order from Bing Chun Nigeria.";
+
+function getProductOrderMessage(product: MenuProduct) {
+    const action = product.status === "sold-out-online" ? "check the availability of" : "order";
+    return `Hi Zidi, I would like to ${action} ${product.name} (${formatNaira.format(product.price)}) from Bing Chun Nigeria.`;
+}
+
+function getLocationOrderMessage(location: BingChunLocation) {
+    return `Hi Zidi, I would like to place a Bing Chun order from ${location.name} in ${location.area}.`;
+}
 
 const mapBounds = {
     north: 6.61,
@@ -96,21 +107,56 @@ function Reveal({ children, className = "", delay = 0 }: { children: ReactNode; 
 function BingChunPage() {
     const [activeCategory, setActiveCategory] = useState<MenuCategoryId>("fruit-tea");
     const [menuOpen, setMenuOpen] = useState(false);
-    const [selectedProduct, setSelectedProduct] = useState<{ product: MenuProduct; categoryLabel: string } | null>(null);
     const [headerCompact, setHeaderCompact] = useState(false);
+    const [orderDestination, setOrderDestination] = useState<string | null>(null);
+    const [orderChannelStatus, setOrderChannelStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+    const [orderChannelAttempt, setOrderChannelAttempt] = useState(0);
     const [locationFilter, setLocationFilter] = useState("All");
     const [selectedLocationId, setSelectedLocationId] = useState(locations[0].id);
-    const productDialogCloseRef = useRef<HTMLButtonElement>(null);
     const currentCategory = menuCategories.find(category => category.id === activeCategory) ?? menuCategories[0];
     const filteredLocations = locationFilter === "All" ? locations : locations.filter(location => location.area === locationFilter);
     const selectedLocation = locations.find(location => location.id === selectedLocationId) ?? locations[0];
+    const orderChannelLabel = orderChannelStatus === "ready" ? "Order with Zidi" : orderChannelStatus === "loading" ? "Connecting to Zidi..." : "Reconnect to Zidi";
+    const liveMenuLabel = orderChannelStatus === "ready" ? "Ask Zidi to order" : orderChannelLabel;
+
+    const getOrderUrl = (message = defaultOrderMessage) => orderDestination
+        ? createCommerceWhatsAppUrl(orderDestination, message)
+        : undefined;
+
+    const handleOrderClick = (event: MouseEvent<HTMLAnchorElement>) => {
+        if (orderDestination)
+            return;
+
+        event.preventDefault();
+        if (orderChannelStatus === "unavailable")
+            setOrderChannelAttempt(attempt => attempt + 1);
+    };
+
+    useEffect(() => {
+        const controller = new AbortController();
+
+        setOrderChannelStatus("loading");
+
+        resolveCommerceWhatsAppLink(controller.signal)
+            .then((channel) => {
+                setOrderDestination(channel.url);
+                setOrderChannelStatus("ready");
+            })
+            .catch(() => {
+                if (!controller.signal.aborted) {
+                    setOrderDestination(null);
+                    setOrderChannelStatus("unavailable");
+                }
+            });
+
+        return () => controller.abort();
+    }, [orderChannelAttempt]);
 
     useEffect(() => {
         const onScroll = () => setHeaderCompact(window.scrollY > 24);
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
                 setMenuOpen(false);
-                setSelectedProduct(null);
             }
         };
 
@@ -126,20 +172,12 @@ function BingChunPage() {
 
     useEffect(() => {
         const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = menuOpen || selectedProduct ? "hidden" : previousOverflow;
+        document.body.style.overflow = menuOpen ? "hidden" : previousOverflow;
 
         return () => {
             document.body.style.overflow = previousOverflow;
         };
-    }, [menuOpen, selectedProduct]);
-
-    useEffect(() => {
-        if (!selectedProduct)
-            return;
-
-        const focusTimer = window.setTimeout(() => productDialogCloseRef.current?.focus(), 40);
-        return () => window.clearTimeout(focusTimer);
-    }, [selectedProduct]);
+    }, [menuOpen]);
 
     useEffect(() => {
         const previousTitle = document.title;
@@ -197,7 +235,6 @@ function BingChunPage() {
             },
             ...(location.phone ? { telephone: location.phone.schema } : {}),
             ...(location.openingHours?.schema ? { openingHours: location.openingHours.schema } : {}),
-            ...(location.orderUrl ? { menu: location.orderUrl } : {}),
         }));
 
         const structuredData = document.createElement("script");
@@ -266,9 +303,17 @@ function BingChunPage() {
                         {navigation.map(item => <a key={item.href} href={item.href}>{item.label}</a>)}
                     </nav>
 
-                    <a className="bc-button bc-button--small bc-button--ink bc-header__order" href={commerce.orderUrl} target="_blank" rel="noreferrer">
-                        <ShoppingBag size={16} aria-hidden="true" />
-                        Order now
+                    <a
+                        className="bc-button bc-button--small bc-button--ink bc-header__order bc-order-link"
+                        href={getOrderUrl()}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-disabled={orderChannelStatus !== "ready"}
+                        aria-busy={orderChannelStatus === "loading"}
+                        onClick={handleOrderClick}
+                    >
+                        <MessageCircle size={16} aria-hidden="true" />
+                        Order with Zidi
                     </a>
 
                     <button
@@ -301,10 +346,22 @@ function BingChunPage() {
                             </a>
                         ))}
                     </nav>
-                    <a className="bc-mobile-nav__order" href={commerce.orderUrl} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>
+                    <a
+                        className="bc-mobile-nav__order bc-order-link"
+                        href={getOrderUrl()}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-disabled={orderChannelStatus !== "ready"}
+                        aria-busy={orderChannelStatus === "loading"}
+                        onClick={(event) => {
+                            handleOrderClick(event);
+                            if (orderDestination)
+                                setMenuOpen(false);
+                        }}
+                    >
                         <span>
-                            <ShoppingBag size={18} aria-hidden="true" />
-                            Order on Chowdeck
+                            <MessageCircle size={18} aria-hidden="true" />
+                            {orderChannelLabel}
                         </span>
                         <ArrowUpRight size={19} aria-hidden="true" />
                     </a>
@@ -335,8 +392,16 @@ function BingChunPage() {
                                     {" "}
                                     <ArrowRight size={18} />
                                 </button>
-                                <a className="bc-text-link" href={commerce.orderUrl} target="_blank" rel="noreferrer">
-                                    Order on Chowdeck
+                                <a
+                                    className="bc-text-link bc-order-link"
+                                    href={getOrderUrl()}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    aria-disabled={orderChannelStatus !== "ready"}
+                                    aria-busy={orderChannelStatus === "loading"}
+                                    onClick={handleOrderClick}
+                                >
+                                    {orderChannelLabel}
                                     {" "}
                                     <ArrowUpRight size={17} />
                                 </a>
@@ -451,12 +516,15 @@ function BingChunPage() {
                                         key={product.name}
                                         style={{ "--bc-product-index": index } as CSSProperties}
                                     >
-                                        <button
-                                            className="bc-product-card__trigger"
-                                            type="button"
-                                            aria-label={`View ${product.name} details`}
-                                            aria-haspopup="dialog"
-                                            onClick={() => setSelectedProduct({ product, categoryLabel: currentCategory.label })}
+                                        <a
+                                            className="bc-product-card__trigger bc-order-link"
+                                            href={getOrderUrl(getProductOrderMessage(product))}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            aria-label={`${product.status === "sold-out-online" ? "Ask Zidi about" : "Order"} ${product.name} with Zidi on WhatsApp`}
+                                            aria-disabled={orderChannelStatus !== "ready"}
+                                            aria-busy={orderChannelStatus === "loading"}
+                                            onClick={handleOrderClick}
                                         >
                                             <div className="bc-product-card__image">
                                                 <span className="bc-product-card__number">{String(index + 1).padStart(2, "0")}</span>
@@ -470,7 +538,7 @@ function BingChunPage() {
                                                     sizes={index === 0 ? "(max-width: 620px) 90vw, 500px" : "(max-width: 620px) 44vw, 300px"}
                                                     loading="lazy"
                                                 />
-                                                {product.status === "sold-out-online" && <span className="bc-product-card__status">Sold out online</span>}
+                                                {product.status === "sold-out-online" && <span className="bc-product-card__status">Ask Zidi to check</span>}
                                             </div>
                                             <div className="bc-product-card__body">
                                                 <span className="bc-product-card__category">{currentCategory.label}</span>
@@ -481,17 +549,17 @@ function BingChunPage() {
                                                 <div className="bc-product-card__footer">
                                                     <strong>{formatNaira.format(product.price)}</strong>
                                                     <span className="bc-product-card__open" aria-hidden="true">
-                                                        <ArrowUpRight size={18} />
+                                                        <MessageCircle size={18} />
                                                     </span>
                                                 </div>
                                             </div>
-                                        </button>
+                                        </a>
                                     </article>
                                 ))}
                             </div>
                         </div>
 
-                        <p className="bc-menu-note">Menu and prices checked against the Jara Mall Chowdeck listing in August 2026. Availability and prices can change.</p>
+                        <p className="bc-menu-note">Current listed Jara Mall prices as of August 2026. Zidi will confirm availability and the final price before checkout.</p>
                     </div>
                 </section>
 
@@ -526,8 +594,16 @@ function BingChunPage() {
                                     <strong>Creamy</strong>
                                 </span>
                             </div>
-                            <a className="bc-button bc-button--blue" href={commerce.orderUrl} target="_blank" rel="noreferrer">
-                                Try it today
+                            <a
+                                className="bc-button bc-button--blue bc-order-link"
+                                href={getOrderUrl("Hi Zidi, I would like to order the Lychee Jasmine Milk Tea from Bing Chun Nigeria.")}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-disabled={orderChannelStatus !== "ready"}
+                                aria-busy={orderChannelStatus === "loading"}
+                                onClick={handleOrderClick}
+                            >
+                                Order it with Zidi
                                 {" "}
                                 <ArrowUpRight size={18} />
                             </a>
@@ -591,9 +667,9 @@ function BingChunPage() {
                         <div className="bc-value__grid">
                             {[
                                 ["01", "Tea to dessert", "Move from a light jasmine tea to a full sundae without changing stops."],
-                                ["02", "Prices up front", "See the current Jara Mall menu price before opening the order page."],
+                                ["02", "Prices up front", "See the current Jara Mall menu price before starting your Zidi order."],
                                 ["03", "Seven Lagos stops", "Distinct verified branches with accurate coordinates and clear directions."],
-                                ["04", "Order your way", "Visit in person, call a published store number or use an available delivery link."],
+                                ["04", "Order your way", "Visit in person, call a published store number or ask Zidi about pickup and delivery."],
                             ].map(([number, title, description], index) => (
                                 <Reveal className="bc-value__item" delay={index * 60} key={number}>
                                     <span>{number}</span>
@@ -621,9 +697,17 @@ function BingChunPage() {
                                 {" "}
                                 Verified updates only
                             </span>
-                            <p>{promotions.length > 0 ? promotions[0].description : "There is no active Jara Mall promotion published right now. Check the live order page for the latest menu and availability."}</p>
-                            <a className="bc-button bc-button--coral" href={commerce.orderUrl} target="_blank" rel="noreferrer">
-                                Check live menu
+                            <p>{promotions.length > 0 ? promotions[0].description : "There is no active Jara Mall promotion published right now. Ask Zidi for the latest menu and availability."}</p>
+                            <a
+                                className="bc-button bc-button--coral bc-order-link"
+                                href={getOrderUrl()}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-disabled={orderChannelStatus !== "ready"}
+                                aria-busy={orderChannelStatus === "loading"}
+                                onClick={handleOrderClick}
+                            >
+                                {liveMenuLabel}
                                 {" "}
                                 <ExternalLink size={17} />
                             </a>
@@ -702,12 +786,19 @@ function BingChunPage() {
                                                             Call
                                                         </a>
                                                     )}
-                                                    {branch.orderUrl && (
-                                                        <a href={branch.orderUrl} target="_blank" rel="noreferrer">
-                                                            <ShoppingBag size={15} />
-                                                            Order
-                                                        </a>
-                                                    )}
+                                                    <a
+                                                        className="bc-order-link"
+                                                        href={getOrderUrl(getLocationOrderMessage(branch))}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        aria-label={`Order from ${branch.name} with Zidi on WhatsApp`}
+                                                        aria-disabled={orderChannelStatus !== "ready"}
+                                                        aria-busy={orderChannelStatus === "loading"}
+                                                        onClick={handleOrderClick}
+                                                    >
+                                                        <MessageCircle size={15} />
+                                                        Zidi order
+                                                    </a>
                                                 </div>
                                             </article>
                                         );
@@ -769,65 +860,6 @@ function BingChunPage() {
                 </section>
             </main>
 
-            {selectedProduct && (
-                <div
-                    className="bc-product-dialog"
-                    role="presentation"
-                    onMouseDown={(event) => {
-                        if (event.currentTarget === event.target)
-                            setSelectedProduct(null);
-                    }}
-                >
-                    <section
-                        className="bc-product-dialog__panel"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="bc-product-dialog-title"
-                    >
-                        <button
-                            ref={productDialogCloseRef}
-                            className="bc-product-dialog__close"
-                            type="button"
-                            aria-label="Close product details"
-                            onClick={() => setSelectedProduct(null)}
-                        >
-                            <X size={22} />
-                        </button>
-                        <div className="bc-product-dialog__media">
-                            <span aria-hidden="true">ICE & TEA · LAGOS</span>
-                            <img
-                                className={`is-${selectedProduct.product.imageFit ?? "contain"}`}
-                                src={selectedProduct.product.image}
-                                alt={selectedProduct.product.imageAlt}
-                                width={selectedProduct.product.imageWidth ?? 700}
-                                height={selectedProduct.product.imageHeight ?? 700}
-                            />
-                            <i aria-hidden="true">✦</i>
-                        </div>
-                        <div className="bc-product-dialog__content">
-                            <p className="bc-product-dialog__category">{selectedProduct.categoryLabel}</p>
-                            <h2 id="bc-product-dialog-title">{selectedProduct.product.name}</h2>
-                            <p className="bc-product-dialog__description">{selectedProduct.product.description}</p>
-                            <div className="bc-product-dialog__meta">
-                                <span>
-                                    Menu price
-                                    <strong>{formatNaira.format(selectedProduct.product.price)}</strong>
-                                </span>
-                                <span>
-                                    Online status
-                                    <strong>{selectedProduct.product.status === "sold-out-online" ? "Sold out online" : "Check live menu"}</strong>
-                                </span>
-                            </div>
-                            <a className="bc-button bc-button--ink bc-product-dialog__cta" href={commerce.orderUrl} target="_blank" rel="noreferrer">
-                                {selectedProduct.product.status === "sold-out-online" ? "Check live menu" : "Order on Chowdeck"}
-                                <ArrowUpRight size={18} />
-                            </a>
-                            <small>Price and availability are based on the current Jara Mall listing and may change.</small>
-                        </div>
-                    </section>
-                </div>
-            )}
-
             <footer className="bc-footer">
                 <div className="bc-shell bc-footer__top">
                     <div className="bc-footer__brand">
@@ -843,7 +875,17 @@ function BingChunPage() {
                             <strong>Visit</strong>
                             <a href="#visit">Find a Lagos location</a>
                             <a href="#visit">7 verified branches</a>
-                            <a href={commerce.orderUrl} target="_blank" rel="noreferrer">Order on Chowdeck</a>
+                            <a
+                                className="bc-order-link"
+                                href={getOrderUrl()}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-disabled={orderChannelStatus !== "ready"}
+                                aria-busy={orderChannelStatus === "loading"}
+                                onClick={handleOrderClick}
+                            >
+                                {orderChannelLabel}
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -854,9 +896,30 @@ function BingChunPage() {
                         {" "}
                         Bing Chun Nigeria
                     </span>
-                    <span>Menu details sourced from the live Jara Mall listing.</span>
+                    <span>Order support powered by Zidi on WhatsApp.</span>
                 </div>
             </footer>
+
+            <a
+                className={`bc-zidi-prompt bc-order-link is-${orderChannelStatus}`}
+                href={getOrderUrl()}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={orderChannelStatus === "ready" ? "Open Zidi on WhatsApp to place a Bing Chun order" : orderChannelLabel}
+                aria-disabled={orderChannelStatus !== "ready"}
+                aria-busy={orderChannelStatus === "loading"}
+                onClick={handleOrderClick}
+            >
+                <span className="bc-zidi-prompt__icon" aria-hidden="true">
+                    <MessageCircle size={23} />
+                    <i />
+                </span>
+                <span className="bc-zidi-prompt__copy">
+                    <small>{orderChannelStatus === "ready" ? "Quick ordering assistant" : orderChannelStatus === "loading" ? "Getting your assistant ready" : "Connection interrupted"}</small>
+                    <strong>{orderChannelStatus === "ready" ? "Order fast with Zidi" : orderChannelLabel}</strong>
+                </span>
+                <ArrowUpRight className="bc-zidi-prompt__arrow" size={18} aria-hidden="true" />
+            </a>
         </div>
     );
 }

@@ -17,7 +17,6 @@ export type BingChunLocation = {
     longitude: number;
     image: null;
     mapUrl: string;
-    orderUrl: string | null;
     status: "verified";
     postalAddress: {
         streetAddress: string;
@@ -45,7 +44,6 @@ export const locations: BingChunLocation[] = [
         longitude: 3.3386004,
         image: null,
         mapUrl: "https://www.google.com/maps/dir/?api=1&destination=6.592294%2C3.3386004",
-        orderUrl: "https://chowdeck.com/store/ikeja/restaurants/bingchun-ikeja1wle1l",
         status: "verified",
         postalAddress: {
             streetAddress: "Jara Mall, 22 Simbiat Abiola Way",
@@ -67,7 +65,6 @@ export const locations: BingChunLocation[] = [
         longitude: 3.3663151,
         image: null,
         mapUrl: "https://www.google.com/maps/dir/?api=1&destination=6.571211%2C3.3663151",
-        orderUrl: null,
         status: "verified",
         postalAddress: {
             streetAddress: "Purple Mall, 350 Ikorodu Road",
@@ -93,7 +90,6 @@ export const locations: BingChunLocation[] = [
         longitude: 3.3559498,
         image: null,
         mapUrl: "https://www.google.com/maps/dir/?api=1&destination=6.4901147%2C3.3559498",
-        orderUrl: null,
         status: "verified",
         postalAddress: {
             streetAddress: "75A Bode Thomas Street",
@@ -119,7 +115,6 @@ export const locations: BingChunLocation[] = [
         longitude: 3.2821729,
         image: null,
         mapUrl: "https://www.google.com/maps/dir/?api=1&destination=6.4696356%2C3.2821729",
-        orderUrl: null,
         status: "verified",
         postalAddress: {
             streetAddress: "22 Road, beside Groove Mall, Festac Town",
@@ -138,7 +133,6 @@ export const locations: BingChunLocation[] = [
         longitude: 3.4061192,
         image: null,
         mapUrl: "https://www.google.com/maps/dir/?api=1&destination=6.4360783%2C3.4061192",
-        orderUrl: null,
         status: "verified",
         postalAddress: {
             streetAddress: "CCP4+CCQ, Bonny Camp Street",
@@ -164,7 +158,6 @@ export const locations: BingChunLocation[] = [
         longitude: 3.4453773,
         image: null,
         mapUrl: "https://www.google.com/maps/dir/?api=1&destination=6.4230016%2C3.4453773",
-        orderUrl: "https://glovoapp.com/ng/en/island-lagos/bing-chun-nigeria-los",
         status: "verified",
         postalAddress: {
             streetAddress: "CURATE, Water Corporation Drive",
@@ -190,7 +183,6 @@ export const locations: BingChunLocation[] = [
         longitude: 3.4769091,
         image: null,
         mapUrl: "https://www.google.com/maps/dir/?api=1&destination=6.4425329%2C3.4769091",
-        orderUrl: "https://glovoapp.com/ng/en/island-lagos/bing-chun-nigeria-los-13r3q",
         status: "verified",
         postalAddress: {
             streetAddress: "Olive Mall, 7B Emma Abimbola Cole",
